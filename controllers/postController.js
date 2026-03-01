@@ -46,7 +46,7 @@ const getFeed = async (req, res) => {
   try {
     const user   = await User.findById(req.user._id);
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit  = Math.min(50, parseInt(req.query.limit) || 20);
+    const limit  = Math.min(10, parseInt(req.query.limit) || 3);
     const skip   = (page - 1) * limit;
     const mode   = req.query.mode   || 'normal';
     const filter = req.query.filter || 'all';
@@ -136,7 +136,7 @@ const getFeed = async (req, res) => {
 const _getSquadFeed = async (req, res, squadId) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const limit = Math.min(10, parseInt(req.query.limit) || 3);
     const skip  = (page - 1) * limit;
 
     const filter = { squadId, visibility: { $ne: 'private' } };
