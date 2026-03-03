@@ -329,13 +329,25 @@ const toggleLike = async (req, res) => {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Post not found.' });
 
-    const userId      = req.user._id;
+    const userId       = req.user._id;
     const alreadyLiked = post.likes.some((id) => id.toString() === userId.toString());
 
     if (alreadyLiked) {
       post.likes = post.likes.filter((id) => id.toString() !== userId.toString());
     } else {
       post.likes.push(userId);
+      // Fire notification (fire-and-forget)
+      try {
+        const { createNotification } = require('./notificationController');
+        createNotification({
+          toUserId:      post.userId,
+          fromUserId:    userId,
+          type:          'like',
+          referenceId:   post._id,
+          referenceType: 'Post',
+          message:       'liked your post',
+        });
+      } catch (_) {}
     }
 
     await post.save();
@@ -375,10 +387,37 @@ const addComment = async (req, res) => {
     if (!post) return res.status(404).json({ success: false, message: 'Post not found.' });
 
     const user = await User.findById(req.user._id);
-    post.comments.push({ userId: req.user._id, username: user.username, text: text.trim() });
+    const newComment = { userId: req.user._id, username: user.username, text: text.trim() };
+    post.comments.push(newComment);
     await post.save();
 
-    res.status(201).json({ success: true, commentsCount: post.comments.length, comments: post.comments.slice(-10) });
+    // Fire notification (fire-and-forget)
+    try {
+      const { createNotification } = require('./notificationController');
+      createNotification({
+        toUserId:      post.userId,
+        fromUserId:    req.user._id,
+        type:          'comment',
+        referenceId:   post._id,
+        referenceType: 'Post',
+        message:       `commented: "${text.trim().substring(0, 50)}"`,
+      });
+    } catch (_) {}
+
+    // Return the newly added comment with a proper id
+    const savedComment = post.comments[post.comments.length - 1];
+    res.status(201).json({
+      success:       true,
+      commentsCount: post.comments.length,
+      comment: {
+        _id:       savedComment._id,
+        userId:    req.user._id,
+        username:  user.username,
+        text:      savedComment.text,
+        createdAt: savedComment.createdAt,
+      },
+      comments: post.comments.slice(-10),
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Could not add comment.' });
   }

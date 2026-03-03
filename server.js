@@ -49,6 +49,7 @@ app.use('/api/missions', require('./routes/missions'));
 app.use('/api/posts', require('./routes/posts'));
 app.use('/api/squads', require('./routes/squads'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 app.get('/', (req, res) =>
   res.json({ message: '🚀 Level Up API v2.0', version: '2.0.0' })
