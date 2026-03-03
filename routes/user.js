@@ -4,6 +4,7 @@ const {
   getProfile, updateProfile, uploadAvatar,
   getUserById, getUserPosts,
   followUser, unfollowUser,
+  getFollowers, getFollowing, searchUsers,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
@@ -27,9 +28,14 @@ router.get('/profile',  getProfile);
 router.put('/profile',  updateProfile);
 router.post('/avatar',  avatarUpload.single('avatar'), uploadAvatar);
 
-// Other user – MUST come before /:id so /me isn't caught
-router.get('/:id',        getUserById);
-router.get('/:id/posts',  getUserPosts);
+// Search (must come before /:id)
+router.get('/search', searchUsers);
+
+// Other user
+router.get('/:id',           getUserById);
+router.get('/:id/posts',     getUserPosts);
+router.get('/:id/followers', getFollowers);
+router.get('/:id/following', getFollowing);
 
 // Follow / unfollow
 router.post('/:id/follow',   followUser);

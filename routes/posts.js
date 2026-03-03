@@ -4,13 +4,13 @@ const { protect } = require('../middleware/auth');
 const {
   getFeed, getSquadFeed, getMyPosts,
   createPost, createPostWithMedia,
-  toggleLike, addComment, getComments,
+  toggleLike, getComments, addComment,
+  toggleCommentLike, deleteComment, replyToComment, toggleReplyLike,
 } = require('../controllers/postController');
 
 const router = express.Router();
 router.use(protect);
 
-// Multer: accept photo/video up to 50MB, store in memory.
 const mediaUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -21,17 +21,17 @@ const mediaUpload = multer({
   },
 });
 
-// Feed (must be before /:id routes)
-router.get('/feed', getFeed);
-router.get('/my',   getMyPosts);
-router.get('/squad/:squadId', getSquadFeed);
-
-// Create post with optional media upload
+router.get('/feed',              getFeed);
+router.get('/my',                getMyPosts);
+router.get('/squad/:squadId',    getSquadFeed);
 router.post('/', mediaUpload.single('media'), createPostWithMedia);
 
-// Post interactions
-router.get('/:id/comments', getComments);
-router.post('/:id/like',    toggleLike);
-router.post('/:id/comment', addComment);
+router.get('/:id/comments',                                    getComments);
+router.post('/:id/like',                                       toggleLike);
+router.post('/:id/comment',                                    addComment);
+router.post('/:id/comments/:commentId/like',                   toggleCommentLike);
+router.delete('/:id/comments/:commentId',                      deleteComment);
+router.post('/:id/comments/:commentId/reply',                  replyToComment);
+router.post('/:id/comments/:commentId/replies/:replyId/like',  toggleReplyLike);
 
 module.exports = router;

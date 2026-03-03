@@ -249,4 +249,44 @@ const unfollowUser = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, uploadAvatar, getUserById, getUserPosts, followUser, unfollowUser };
+
+
+// ─── @GET /api/users/:id/followers ────────────────────────────────────────────
+const getFollowers = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('followers').populate('followers', 'username profileImageUrl level bio');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    res.status(200).json({ success: true, users: user.followers || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not fetch followers.' });
+  }
+};
+
+// ─── @GET /api/users/:id/following ────────────────────────────────────────────
+const getFollowing = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('following').populate('following', 'username profileImageUrl level bio');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    res.status(200).json({ success: true, users: user.following || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not fetch following.' });
+  }
+};
+
+// ─── @GET /api/users/search?q= ────────────────────────────────────────────────
+const searchUsers = async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(200).json({ success: true, users: [] });
+    const users = await User.find({
+      username: { $regex: q, $options: 'i' },
+      _id: { $ne: req.user._id },
+      isActive: true,
+    }).select('username profileImageUrl level bio').limit(20);
+    res.status(200).json({ success: true, users });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Search failed.' });
+  }
+};
+
+module.exports = { getProfile, updateProfile, uploadAvatar, getUserById, getUserPosts, followUser, unfollowUser, getFollowers, getFollowing, searchUsers };
