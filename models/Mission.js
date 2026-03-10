@@ -1,174 +1,274 @@
 const mongoose = require('mongoose');
 
-/**
- * Mission – the core data model.
- * IMPORTANT: once isLocked=true (set by /start endpoint), rules and durationDays
- * CANNOT be modified. The server enforces this in PUT /api/missions/:id.
- */
+const milestoneSchema = new mongoose.Schema({
+  day:       { type: Number, required: true },
+  label:     { type: String, required: true },
+  xpBonus:   { type: Number, default: 0 },
+  achieved:  { type: Boolean, default: false },
+  achievedAt:{ type: Date, default: null },
+}, { _id: false });
+
 const missionSchema = new mongoose.Schema(
   {
-    userId: {                                 // renamed from ownerId for backwards compat (keep both indexed)
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: {
-      type: String,
-      required: [true, 'Mission title is required'],
-      trim: true,
-      maxlength: [100, 'Title cannot exceed 100 characters'],
+      type: String, required: [true, 'Mission title is required'],
+      trim: true, maxlength: [100, 'Title cannot exceed 100 characters'],
     },
-    description: {
-      type: String,
-      default: '',
-      maxlength: [500, 'Description cannot exceed 500 characters'],
-    },
-    category: {
-      type: String,
-      default: 'Custom Mission',
-    },
-    emoji: { type: String, default: '🎯' },
+    description: { type: String, default: '', maxlength: [500, 'Description cannot exceed 500 characters'] },
+    category:    { type: String, default: 'Custom Mission' },
+    emoji:       { type: String, default: '🎯' },
 
-    // ── Rules (locked after mission starts) ───────────────────────────────────
     rules: {
-      dailyChecklist: [{ type: String }],   // checklist items user must do each day
-      proofType: {
-        type: String,
-        enum: ['photo', 'video', 'text', 'any'],
-        default: 'photo',
-      },
+      dailyChecklist: [{ type: String }],
+      proofType: { type: String, enum: ['photo', 'video', 'text', 'any'], default: 'photo' },
       proofCountPerDay: { type: Number, default: 1, min: 1, max: 5 },
     },
 
     durationDays: { type: Number, default: 30, min: 1, max: 365 },
+    visibility: { type: String, enum: ['public', 'squad', 'private'], default: 'public' },
 
-    visibility: {
-      type: String,
-      enum: ['public', 'squad', 'private'],
-      default: 'public',
-    },
+    // ── Timezone & Reminders ──────────────────────────────────────────────────
+    timezone: { type: String, default: 'UTC' },
+    reminderTime:    { type: String, default: null },
+    reminderEnabled: { type: Boolean, default: false },
 
     // ── State machine ─────────────────────────────────────────────────────────
     startedAt: { type: Date, default: null },
-    startDate: { type: Date, default: null },  // same as startedAt, kept for compat
-    isLocked: { type: Boolean, default: false },
+    startDate: { type: Date, default: null },
+    isLocked:  { type: Boolean, default: false },
     status: {
       type: String,
       enum: ['draft', 'active', 'completed', 'failed', 'at_risk'],
       default: 'draft',
     },
-    isActive: { type: Boolean, default: true },   // legacy, mirrors status=active
+    isActive:  { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
 
-    // ── Analytics (updated each proof upload) ─────────────────────────────────
+    // ── Analytics ─────────────────────────────────────────────────────────────
     analytics: {
       completedDays: { type: Number, default: 0 },
-      missedDays: { type: Number, default: 0 },
+      missedDays:    { type: Number, default: 0 },
       currentStreak: { type: Number, default: 0 },
-      bestStreak: { type: Number, default: 0 },
+      bestStreak:    { type: Number, default: 0 },
       identityScore: { type: Number, default: 0, min: 0, max: 100 },
+      lastProofDay:  { type: Number, default: 0 }, // last day number that had proof
     },
 
-    // Legacy fields kept for compat with existing Flutter app
-    currentDay: { type: Number, default: 0 },
-    streakCount: { type: Number, default: 0 },
-    lastCheckIn: { type: Date, default: null },
-    totalDays: { type: Number, default: 30 },
-    completedDays: [{ type: String }],   // 'YYYY-MM-DD' strings
-    endDate: { type: Date, default: null },
-    squadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Squad', default: null },
+    // ── Milestones ─────────────────────────────────────────────────────────────
+    milestones: {
+      type: [milestoneSchema],
+      default: () => [
+        { day: 3,  label: '3-Day Spark',     xpBonus: 50,  achieved: false },
+        { day: 7,  label: '1-Week Warrior',  xpBonus: 100, achieved: false },
+        { day: 14, label: '2-Week Grind',    xpBonus: 150, achieved: false },
+        { day: 21, label: '21-Day Habit',    xpBonus: 200, achieved: false },
+        { day: 30, label: '30-Day Champion', xpBonus: 300, achieved: false },
+        { day: 60, label: '60-Day Legend',   xpBonus: 500, achieved: false },
+        { day: 90, label: '90-Day GOAT',     xpBonus: 750, achieved: false },
+      ],
+    },
+
+    // ── Streak Shields ─────────────────────────────────────────────────────────
+    shields: {
+      available:   { type: Number, default: 1 },
+      used:        { type: Number, default: 0 },
+      lastGranted: { type: Date, default: null },
+      usedOnDays:  [{ type: Number }],
+    },
+
+    // ── Rest Days (max 2 per mission) ─────────────────────────────────────────
+    restDays: [{ type: String }], // 'YYYY-MM-DD' strings
+
+    // ── Legacy fields ─────────────────────────────────────────────────────────
+    currentDay:   { type: Number, default: 0 },
+    streakCount:  { type: Number, default: 0 },
+    lastCheckIn:  { type: Date, default: null },
+    totalDays:    { type: Number, default: 30 },
+    completedDays:[{ type: String }],
+    endDate:      { type: Date, default: null },
+    squadId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Squad', default: null },
   },
   { timestamps: true }
 );
 
-// Indexes specified in the requirements
 missionSchema.index({ userId: 1 });
 missionSchema.index({ startedAt: 1 });
 missionSchema.index({ status: 1, isDeleted: 1 });
 
-/**
- * Compute which day number it currently is for this mission.
- * @param {string} timezone  IANA timezone string (default UTC)
- * @returns {number} 1-based day number, or -1 if not started
- */
-missionSchema.methods.computeDayNumber = function (timezone = 'UTC') {
-  if (!this.startedAt) return -1;
-
-  // Get today's date in the user's timezone
+// ── Utility: get today's date string in the mission's timezone ─────────────────
+missionSchema.methods.todayString = function (timezone) {
+  const tz = timezone || this.timezone || 'UTC';
   const now = new Date();
-  const startDay = new Date(this.startedAt);
-
-  // Calculate day difference using UTC dates truncated to midnight
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const startMidnight = Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate());
-  const todayMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-
-  const dayNumber = Math.floor((todayMidnight - startMidnight) / msPerDay) + 1;
-  return dayNumber;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now);
+    const p = parts.reduce((a, x) => { a[x.type] = x.value; return a; }, {});
+    return `${p.year}-${p.month}-${p.day}`;
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
 };
 
 /**
- * Compute identityScore (0-100) from analytics.
- * Formula: (completedDays / max(1, completedDays+missedDays)) * 80 
- *          + streakBonus(currentStreak) * 20
+ * Compute today's day number, timezone-aware.
  */
+missionSchema.methods.computeDayNumber = function (timezone) {
+  if (!this.startedAt) return -1;
+  const tz = timezone || this.timezone || 'UTC';
+  const now = new Date();
+  const startDay = new Date(this.startedAt);
+
+  let startMidnight, todayMidnight;
+  try {
+    const toDateParts = (date, tzStr) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tzStr, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(date);
+      return parts.reduce((acc, p) => { acc[p.type] = parseInt(p.value); return acc; }, {});
+    };
+    const sp = toDateParts(startDay, tz);
+    const np = toDateParts(now, tz);
+    startMidnight = Date.UTC(sp.year, sp.month - 1, sp.day);
+    todayMidnight = Date.UTC(np.year, np.month - 1, np.day);
+  } catch {
+    startMidnight = Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate());
+    todayMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  }
+  return Math.floor((todayMidnight - startMidnight) / (24 * 60 * 60 * 1000)) + 1;
+};
+
 missionSchema.methods.computeIdentityScore = function () {
   const { completedDays, missedDays, currentStreak } = this.analytics;
   const total = completedDays + missedDays;
   if (total === 0) return 0;
-  const completionRatio = completedDays / total;
-  const streakBonus = Math.min(currentStreak / 30, 1); // caps at 30-day streak
-  return Math.round(completionRatio * 80 + streakBonus * 20);
+  return Math.round((completedDays / total) * 80 + Math.min(currentStreak / 30, 1) * 20);
+};
+
+missionSchema.methods.getIdentityTitle = function () {
+  const score = this.analytics.identityScore;
+  if (score >= 90) return 'LEGEND';
+  if (score >= 75) return 'WARRIOR';
+  if (score >= 60) return 'DISCIPLINED';
+  if (score >= 40) return 'COMMITTED';
+  return 'BEGINNER';
+};
+
+/** Check and award newly reached milestones. Returns array of newly achieved. */
+missionSchema.methods.checkMilestones = function () {
+  const newlyAchieved = [];
+  const current = this.analytics.completedDays;
+  for (const m of this.milestones) {
+    if (!m.achieved && current >= m.day) {
+      m.achieved = true;
+      m.achievedAt = new Date();
+      newlyAchieved.push({ day: m.day, label: m.label, xpBonus: m.xpBonus });
+    }
+  }
+  return newlyAchieved;
 };
 
 /**
- * Legacy: isTodayDone checks completedDays string array
+ * recordProof — single source of truth for check-in logic.
+ * Called by proofController and checkIn (legacy).
+ * Returns { alreadyDone, milestones: [{day, label, xpBonus}] }
  */
-missionSchema.methods.isTodayDone = function () {
-  const today = new Date().toISOString().slice(0, 10);
-  return this.completedDays.includes(today);
-};
+missionSchema.methods.recordProof = async function (dayNumber, timezone) {
+  const tz = timezone || this.timezone || 'UTC';
+  const todayStr = this.todayString(tz);
 
-/**
- * checkIn — idempotent daily check-in. Updates both legacy and analytics fields.
- * Called by postController when a post is submitted for a mission.
- */
-missionSchema.methods.checkIn = async function () {
-  const today = new Date().toISOString().slice(0, 10);
-  if (this.completedDays.includes(today)) return this; // already done today
+  if (this.completedDays.includes(todayStr)) {
+    return { alreadyDone: true, milestones: [] };
+  }
 
-  // Legacy fields
-  this.completedDays.push(today);
-  this.currentDay = Math.min(this.currentDay + 1, this.totalDays || this.durationDays);
+  // Add today
+  this.completedDays.push(todayStr);
+  this.analytics.completedDays += 1;
+  this.analytics.lastProofDay = dayNumber;
 
+  // Consecutive? Check if yesterday was completed
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yStr = yesterday.toISOString().slice(0, 10);
-  this.streakCount = this.completedDays.includes(yStr) ? this.streakCount + 1 : 1;
-  this.lastCheckIn = new Date();
+  const hadYesterday = this.completedDays.includes(yStr);
 
-  // Analytics fields (new)
-  this.analytics.completedDays = (this.analytics.completedDays || 0) + 1;
-  if (this.completedDays.includes(yStr)) {
-    this.analytics.currentStreak = (this.analytics.currentStreak || 0) + 1;
-  } else {
-    this.analytics.currentStreak = 1;
-  }
-  if (this.analytics.currentStreak > (this.analytics.bestStreak || 0)) {
+  this.analytics.currentStreak = hadYesterday ? this.analytics.currentStreak + 1 : 1;
+  if (this.analytics.currentStreak > this.analytics.bestStreak)
     this.analytics.bestStreak = this.analytics.currentStreak;
-  }
   this.analytics.identityScore = this.computeIdentityScore();
 
-  // Check mission completion
-  const totalDays = this.totalDays || this.durationDays || 30;
-  if (this.currentDay >= totalDays) {
+  // Legacy
+  this.currentDay = Math.min(this.currentDay + 1, this.totalDays || this.durationDays);
+  this.streakCount = this.analytics.currentStreak;
+  this.lastCheckIn = new Date();
+
+  // Revert at_risk
+  if (this.status === 'at_risk') { this.status = 'active'; this.isActive = true; }
+
+  // Milestones
+  const newMilestones = this.checkMilestones();
+
+  // Completion check
+  if (this.analytics.completedDays >= (this.durationDays || this.totalDays || 30)) {
     this.status = 'completed';
     this.isActive = false;
     this.endDate = new Date();
   }
 
   await this.save();
-  return this;
+  return { alreadyDone: false, milestones: newMilestones };
+};
+
+/** Use a streak shield. Returns true if successful. */
+missionSchema.methods.useShield = async function (dayNumber) {
+  if (this.shields.available <= 0) return false;
+  const day = dayNumber || this.computeDayNumber();
+  if (this.shields.usedOnDays.includes(day)) return false;
+
+  this.shields.available -= 1;
+  this.shields.used += 1;
+  this.shields.usedOnDays.push(day);
+
+  // Shield absorbs the miss — preserve streak
+  this.analytics.currentStreak = (this.analytics.currentStreak || 0) + 1;
+  if (this.analytics.currentStreak > this.analytics.bestStreak)
+    this.analytics.bestStreak = this.analytics.currentStreak;
+  this.analytics.identityScore = this.computeIdentityScore();
+  this.streakCount = this.analytics.currentStreak;
+
+  if (this.status === 'at_risk') { this.status = 'active'; this.isActive = true; }
+  return true;
+};
+
+/** Grant a weekly shield every Monday if one hasn't been granted this week. */
+missionSchema.methods.grantWeeklyShieldIfDue = function () {
+  const now = new Date();
+  if (!this.shields.lastGranted) {
+    this.shields.available += 1;
+    this.shields.lastGranted = now;
+    return true;
+  }
+  const last = new Date(this.shields.lastGranted);
+  const msSince = now - last;
+  const daysSince = msSince / (1000 * 60 * 60 * 24);
+  if (daysSince >= 7) {
+    this.shields.available = Math.min(this.shields.available + 1, 3); // cap at 3
+    this.shields.lastGranted = now;
+    return true;
+  }
+  return false;
+};
+
+missionSchema.methods.isTodayDone = function () {
+  const today = new Date().toISOString().slice(0, 10);
+  return this.completedDays.includes(today);
+};
+
+// Legacy checkIn method (used by post creation flow)
+missionSchema.methods.checkIn = async function (timezone) {
+  const result = await this.recordProof(this.computeDayNumber(timezone), timezone);
+  return { mission: this, newMilestones: result.milestones };
 };
 
 module.exports = mongoose.model('Mission', missionSchema);

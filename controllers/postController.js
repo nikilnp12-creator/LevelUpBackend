@@ -468,9 +468,77 @@ const toggleReplyLike = async (req, res) => {
   }
 };
 
+// ─── @POST /api/posts/:id/react ───────────────────────────────────────────────
+// Toggle an emoji reaction (🔥👏💪🐐❤️😮). One reaction type per user per post.
+const toggleReaction = async (req, res) => {
+  const { emoji } = req.body;
+  const VALID = ['🔥', '👏', '💪', '🐐', '❤️', '😮'];
+  if (!emoji || !VALID.includes(emoji))
+    return res.status(400).json({ success: false, message: `Invalid emoji. Allowed: ${VALID.join(' ')}` });
+
+  try {
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id))
+      return res.status(400).json({ success: false, message: 'Invalid post ID.' });
+
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found.' });
+
+    const userId = req.user._id.toString();
+    const existingIdx = (post.reactions || []).findIndex(r => r.userId.toString() === userId);
+
+    if (existingIdx >= 0) {
+      const existing = post.reactions[existingIdx];
+      if (existing.emoji === emoji) {
+        // Same emoji — remove reaction (toggle off)
+        post.reactions.splice(existingIdx, 1);
+      } else {
+        // Different emoji — replace
+        post.reactions[existingIdx].emoji = emoji;
+      }
+    } else {
+      // New reaction
+      if (!post.reactions) post.reactions = [];
+      post.reactions.push({ userId: req.user._id, emoji });
+    }
+
+    await post.save();
+
+    // Build summary
+    const summary = {};
+    for (const r of post.reactions) {
+      summary[r.emoji] = (summary[r.emoji] || 0) + 1;
+    }
+    const userReaction = (post.reactions || []).find(r => r.userId.toString() === userId)?.emoji || null;
+
+    res.status(200).json({
+      success: true,
+      reactionsCount: post.reactions.length,
+      reactionSummary: summary,
+      userReaction,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not toggle reaction.' });
+  }
+};
+
+// ─── @GET /api/posts/:id/reactions ───────────────────────────────────────────
+const getReactions = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .select('reactions')
+      .populate('reactions.userId', 'username profileImageUrl');
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found.' });
+    res.status(200).json({ success: true, reactions: post.reactions || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not fetch reactions.' });
+  }
+};
+
 module.exports = {
   getFeed, getSquadFeed, getSquadFeedById, getMyPosts,
   createPost, createPostWithMedia, toggleLike,
   getComments, addComment, toggleCommentLike, deleteComment,
   replyToComment, toggleReplyLike,
+  toggleReaction, getReactions,
 };

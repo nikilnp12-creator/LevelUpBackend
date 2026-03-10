@@ -1,37 +1,42 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// Level title system
+const LEVEL_TITLES = [
+  { minLevel: 1,  title: 'Starter',    emoji: '🌱' },
+  { minLevel: 5,  title: 'Committed',  emoji: '💪' },
+  { minLevel: 10, title: 'Warrior',    emoji: '⚔️' },
+  { minLevel: 20, title: 'Champion',   emoji: '🏆' },
+  { minLevel: 35, title: 'Legend',     emoji: '⭐' },
+  { minLevel: 50, title: 'GOAT',       emoji: '🐐' },
+];
+
+const badgeSchema = new mongoose.Schema({
+  id:         { type: String, required: true },
+  name:       { type: String, required: true },
+  emoji:      { type: String, required: true },
+  description:{ type: String, default: '' },
+  earnedAt:   { type: Date, default: Date.now },
+}, { _id: false });
+
 const userSchema = new mongoose.Schema(
   {
     username: {
-      type: String,
-      required: [true, 'Username is required'],
-      unique: true,
-      trim: true,
-      minlength: [3, 'Username must be at least 3 characters'],
+      type: String, required: [true, 'Username is required'], unique: true,
+      trim: true, minlength: [3, 'Username must be at least 3 characters'],
       maxlength: [30, 'Username cannot exceed 30 characters'],
     },
     email: {
-      type: String,
-      required: [true, 'Email is required'],
-      unique: true,
-      lowercase: true,
-      trim: true,
-      match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
+      type: String, required: [true, 'Email is required'], unique: true,
+      lowercase: true, trim: true, match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
     },
     password: {
-      type: String,
-      required: [true, 'Password is required'],
-      minlength: [6, 'Password must be at least 6 characters'],
-      select: false,
+      type: String, required: [true, 'Password is required'],
+      minlength: [6, 'Password must be at least 6 characters'], select: false,
     },
     profileImageUrl: { type: String, default: null },
     profileImagePublicId: { type: String, default: null },
-    bio: {
-      type: String,
-      maxlength: [200, 'Bio cannot exceed 200 characters'],
-      default: '',
-    },
+    bio: { type: String, maxlength: [200, 'Bio cannot exceed 200 characters'], default: '' },
     xp: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     totalStreak: { type: Number, default: 0 },
@@ -40,7 +45,25 @@ const userSchema = new mongoose.Schema(
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
-    // Onboarding tracking
+    // ── FCM Push Notifications ────────────────────────────────────────────────
+    fcmToken: { type: String, default: null },
+    notificationSettings: {
+      dailyReminder: { type: Boolean, default: true },
+      milestoneAlerts: { type: Boolean, default: true },
+      socialActivity: { type: Boolean, default: true },
+      weeklyWrapup: { type: Boolean, default: true },
+    },
+
+    // ── Badges / Achievements ─────────────────────────────────────────────────
+    badges: [badgeSchema],
+
+    // ── Weekly shield quota (earned each Sunday) ──────────────────────────────
+    weeklyShields: {
+      earned: { type: Number, default: 0 },
+      lastEarnedWeek: { type: String, default: null }, // ISO week string 'YYYY-WW'
+    },
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
     onboardingCompleted: { type: Boolean, default: false },
     onboardingData: {
       identity: { type: String, default: null },
@@ -71,6 +94,47 @@ userSchema.methods.addXP = async function (amount) {
   await this.save();
 };
 
+/** Get level title info based on current level */
+userSchema.methods.getLevelTitle = function () {
+  let title = LEVEL_TITLES[0];
+  for (const t of LEVEL_TITLES) {
+    if (this.level >= t.minLevel) title = t;
+  }
+  return title;
+};
+
+/** XP needed to reach next level */
+userSchema.methods.xpToNextLevel = function () {
+  return (this.level * 500) - this.xp;
+};
+
+/** Award badge if not already earned */
+const BADGE_REGISTRY = {
+  'first_checkin': { name: 'First Check-in', emoji: '✅', description: 'Uploaded your first proof!' },
+  'streak_7':      { name: '7-Day Streak',   emoji: '🔥', description: 'Maintained a 7-day streak!' },
+  'streak_21':     { name: '21-Day Habit',   emoji: '💪', description: 'Built a 21-day habit!' },
+  'streak_30':     { name: '30-Day Warrior', emoji: '⚔️', description: 'Completed a 30-day streak!' },
+  'early_bird':    { name: 'Early Bird',     emoji: '🌅', description: 'Uploaded proof before 8am!' },
+  'mission_complete': { name: 'Mission Complete', emoji: '🏆', description: 'Completed a full mission!' },
+  'social_starter':{ name: 'Social Starter', emoji: '👋', description: 'Connected with others!' },
+  'challenge_winner': { name: 'Challenge Winner', emoji: '🥇', description: 'Won a community challenge!' },
+};
+
+userSchema.methods.awardBadge = async function (badgeId, name, emoji, description = '') {
+  const alreadyHas = this.badges.some(b => b.id === badgeId);
+  if (alreadyHas) return false;
+  // Use registry if no name/emoji provided
+  const reg = BADGE_REGISTRY[badgeId];
+  this.badges.push({
+    id: badgeId,
+    name: name || reg?.name || badgeId,
+    emoji: emoji || reg?.emoji || '🏅',
+    description: description || reg?.description || '',
+  });
+  await this.save();
+  return true;
+};
+
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
@@ -80,7 +144,14 @@ userSchema.methods.toJSON = function () {
   obj.followingCount = (obj.following || []).length;
   delete obj.followers;
   delete obj.following;
+  const levelTitle = this.getLevelTitle();
+  obj.levelTitle = levelTitle.title;
+  obj.levelEmoji = levelTitle.emoji;
+  obj.xpToNextLevel = this.xpToNextLevel();
+  obj.xpForCurrentLevel = (this.level - 1) * 500;
+  obj.xpProgress = this.xp - obj.xpForCurrentLevel;
   return obj;
 };
 
 module.exports = mongoose.model('User', userSchema);
+module.exports.LEVEL_TITLES = LEVEL_TITLES;
