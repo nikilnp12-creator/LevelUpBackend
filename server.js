@@ -31,12 +31,17 @@ app.use(rateLimit({
   message: { success: false, message: 'Too many requests, please try again later.' },
 }));
 
-// Stripe webhook needs raw body
+// Stripe webhook must receive raw Buffer — apply inline raw() inside the router.
+// Important: mount subscription routes BEFORE global express.json() so the
+// webhook route's own express.raw() middleware can capture the raw body.
+// All other routes under /api/subscriptions still work because the router
+// only applies express.raw() to POST /webhook specifically.
 app.use('/api/subscriptions', require('./routes/subscriptions'));
 
+// Global body parsers — used by all other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });

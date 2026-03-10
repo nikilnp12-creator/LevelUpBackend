@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# Uploads (runtime files — not committed, Render disk is ephemeral)
+uploads/
+
+# Flutter file accidentally in backend repo
+pubspec.lock
+
 # Environment variables
 .env
 .env.local
