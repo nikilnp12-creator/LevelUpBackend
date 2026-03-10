@@ -327,9 +327,38 @@ const checkIn = async (req, res) => {
   }
 };
 
+
+// ── AI Mission Suggestions ───────────────────────────────────────────────────
+const getMissionSuggestions = async (req, res) => {
+  try {
+    const { getSuggestedMissions } = require('../services/missionSuggester');
+    const user = await User.findById(req.user._id);
+    const pastMissions = await Mission.find({ userId: req.user._id, isDeleted: false })
+      .sort({ createdAt: -1 }).limit(10);
+    const suggestions = await getSuggestedMissions(user, pastMissions);
+    res.json({ success: true, suggestions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not generate suggestions.' });
+  }
+};
+
+// ── AI Generate Mission from free text ───────────────────────────────────────
+const generateMissionFromText = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ success: false, message: 'text is required' });
+    const { generateMissionFromText: gen } = require('../services/missionSuggester');
+    const mission = await gen(text, req.user);
+    res.json({ success: true, mission });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not generate mission.' });
+  }
+};
+
 module.exports = {
   getMyMissions, createMission, getMission, updateMission,
   startMission, completeMission, getMissionProofs, flagProof,
   getPublicFeed, getLeaderboard, checkIn, deleteMission,
   useShield, declareRestDay, getTemplates,
+  getMissionSuggestions, generateMissionFromText,
 };

@@ -535,10 +535,25 @@ const getReactions = async (req, res) => {
   }
 };
 
+
+// ── Today's upload stats (for home screen counter) ────────────────────────────
+const getTodayStats = async (req, res) => {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const Post = require('../models/Post');
+    const count = await Post.countDocuments({ createdAt: { $gte: startOfDay } });
+    res.json({ success: true, todayUploads: count });
+  } catch (err) {
+    res.status(500).json({ success: false, todayUploads: 0 });
+  }
+};
+
 module.exports = {
   getFeed, getSquadFeed, getSquadFeedById, getMyPosts,
   createPost, createPostWithMedia, toggleLike,
   getComments, addComment, toggleCommentLike, deleteComment,
   replyToComment, toggleReplyLike,
   toggleReaction, getReactions,
+  getTodayStats,
 };

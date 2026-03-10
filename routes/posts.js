@@ -6,7 +6,7 @@ const {
   createPost, createPostWithMedia,
   toggleLike, getComments, addComment,
   toggleCommentLike, deleteComment, replyToComment, toggleReplyLike,
-  toggleReaction, getReactions,
+  toggleReaction, getReactions, getTodayStats,
 } = require('../controllers/postController');
 
 const router = express.Router();
@@ -37,4 +37,5 @@ router.delete('/:id/comments/:commentId', deleteComment);
 router.post('/:id/comments/:commentId/reply', replyToComment);
 router.post('/:id/comments/:commentId/replies/:replyId/like', toggleReplyLike);
 
+router.get('/stats/today', getTodayStats);
 module.exports = router;

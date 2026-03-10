@@ -57,9 +57,11 @@ app.use('/api/squads', require('./routes/squads'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/challenges', require('./routes/challenges'));
+app.use('/api/seasons', require('./routes/seasons'));
+app.use('/api/invites', require('./routes/invites'));
 
 app.get('/', (req, res) =>
-  res.json({ message: '🚀 Level Up API v3.0', version: '3.0.0', features: ['missions', 'challenges', 'streaks', 'shields', 'milestones', 'reactions'] })
+  res.json({ message: '🚀 Level Up API v3.0', version: '4.0.0', features: ['missions', 'challenges', 'seasons', 'invites', 'ai-suggestions', 'streak-cards', 'comeback'] })
 );
 
 app.use((err, req, res, next) => {

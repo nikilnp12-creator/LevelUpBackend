@@ -7,6 +7,7 @@ const {
   startMission, completeMission, getMissionProofs, flagProof,
   getPublicFeed, getLeaderboard, checkIn, deleteMission,
   useShield, declareRestDay, getTemplates,
+  getMissionSuggestions, generateMissionFromText,
 } = require('../controllers/missionController');
 const { uploadProof, reactToProof, addComment, getComments } = require('../controllers/proofController');
 
@@ -52,5 +53,8 @@ router.post('/:id/flag', flagProof);
 router.post('/proofs/:proofId/react', reactToProof);
 router.get('/proofs/:proofId/comments', getComments);
 router.post('/proofs/:proofId/comments', addComment);
+
+router.get('/suggestions', getMissionSuggestions);
+router.post('/generate', generateMissionFromText);
 
 module.exports = router;
