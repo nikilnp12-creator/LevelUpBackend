@@ -289,4 +289,129 @@ const searchUsers = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, uploadAvatar, getUserById, getUserPosts, followUser, unfollowUser, getFollowers, getFollowing, searchUsers };
+// ─── @GET /api/users/weekly-wrapup ────────────────────────────────────────────
+const getWeeklyWrapUp = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const Mission = require('../models/Mission');
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const missions = await Mission.find({
+      userId: req.user._id,
+      status: { $in: ['active', 'completed', 'at_risk'] },
+      isDeleted: false,
+      startedAt: { $lte: new Date() },
+    });
+
+    let weeklyCompleted = 0;
+    let weeklyMissed = 0;
+    let maxStreak = 0;
+    let totalXpThisWeek = 0;
+    const missionSummaries = [];
+
+    for (const m of missions) {
+      const recent = (m.completedDays || []).filter(d => new Date(d) >= weekAgo);
+      const weekDays = Math.min(7, Math.max(0, Math.floor((new Date() - new Date(m.startedAt)) / 86400000)));
+      const expectedThisWeek = Math.min(7, weekDays);
+      const missed = Math.max(0, expectedThisWeek - recent.length);
+
+      weeklyCompleted += recent.length;
+      weeklyMissed += missed;
+      if (m.analytics.currentStreak > maxStreak) maxStreak = m.analytics.currentStreak;
+
+      missionSummaries.push({
+        id: m._id,
+        title: m.title,
+        emoji: m.emoji,
+        completedThisWeek: recent.length,
+        currentStreak: m.analytics.currentStreak,
+        status: m.status,
+      });
+    }
+
+    totalXpThisWeek = weeklyCompleted * 22;
+
+    // Also update the stored weeklyStats
+    await User.findByIdAndUpdate(req.user._id, {
+      'weeklyStats.completedDays': weeklyCompleted,
+      'weeklyStats.missedDays': weeklyMissed,
+      'weeklyStats.bestStreak': maxStreak,
+      'weeklyStats.xpEarned': totalXpThisWeek,
+      'weeklyStats.generatedAt': new Date(),
+    });
+
+    res.json({
+      success: true,
+      wrapUp: {
+        completedDays: weeklyCompleted,
+        missedDays: weeklyMissed,
+        bestStreak: maxStreak,
+        xpEarned: totalXpThisWeek,
+        totalMissions: missions.length,
+        missions: missionSummaries,
+        level: user.level,
+        totalXp: user.xp,
+      },
+    });
+  } catch (err) {
+    console.error('Weekly wrapup error:', err);
+    res.status(500).json({ success: false, message: 'Could not generate weekly wrap-up.' });
+  }
+};
+
+// ─── @PUT /api/users/fcm-token ─────────────────────────────────────────────────
+const registerFcmToken = async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) return res.status(400).json({ success: false, message: 'fcmToken is required.' });
+
+    await User.findByIdAndUpdate(req.user._id, { fcmToken });
+    res.json({ success: true, message: 'FCM token registered.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not register FCM token.' });
+  }
+};
+
+// ─── @GET /api/users/me/identity-score ────────────────────────────────────────
+const getIdentityScore = async (req, res) => {
+  try {
+    const Mission = require('../models/Mission');
+    const missions = await Mission.find({
+      userId: req.user._id,
+      isDeleted: false,
+      status: { $in: ['active', 'completed', 'at_risk'] },
+    });
+
+    if (missions.length === 0) {
+      return res.json({ success: true, identityScore: 0, title: 'BEGINNER', missions: [] });
+    }
+
+    let totalScore = 0;
+    const missionScores = [];
+    for (const m of missions) {
+      const score = m.computeIdentityScore();
+      totalScore += score;
+      missionScores.push({
+        id: m._id,
+        title: m.title,
+        emoji: m.emoji,
+        identityScore: score,
+        identityTitle: m.getIdentityTitle(),
+      });
+    }
+
+    const avgScore = Math.round(totalScore / missions.length);
+    let title = 'BEGINNER';
+    if (avgScore >= 90) title = 'LEGEND';
+    else if (avgScore >= 75) title = 'WARRIOR';
+    else if (avgScore >= 60) title = 'DISCIPLINED';
+    else if (avgScore >= 40) title = 'COMMITTED';
+
+    res.json({ success: true, identityScore: avgScore, title, missions: missionScores });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not compute identity score.' });
+  }
+};
+
+module.exports = { getProfile, updateProfile, uploadAvatar, getUserById, getUserPosts, followUser, unfollowUser, getFollowers, getFollowing, searchUsers, getWeeklyWrapUp, registerFcmToken, getIdentityScore };

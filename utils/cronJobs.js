@@ -155,15 +155,25 @@ function startReminderJob() {
         status: 'active',
         isDeleted: false,
         isLocked: true,
-        reminderHour: nowHour,
-      }).populate('userId', 'fcmToken timezone username');
+        reminderEnabled: true,
+      }).populate('userId', 'fcmToken timezone username notificationSettings');
 
       for (const mission of missions) {
-        const timezone = mission.userId?.timezone || 'UTC';
+        const timezone = mission.userId?.timezone || mission.timezone || 'UTC';
+        // Parse reminderTime (HH:MM format) and check if current UTC hour matches
+        const reminderTime = mission.reminderTime || '';
+        const reminderHour = parseInt(reminderTime.split(':')[0], 10);
+        if (isNaN(reminderHour) || reminderHour !== nowHour) continue;
+
         const todayStr = getTodayStr(timezone);
         if (!mission.completedDays.includes(todayStr)) {
-          // TODO: send FCM push to mission.userId.fcmToken
-          // "Hey! Don't forget to upload proof for ${mission.title} today 🔥"
+          const { sendDailyReminder } = require('../services/pushNotifications');
+          await sendDailyReminder(
+            mission.userId, null,
+            mission.analytics.currentStreak,
+            mission.computeDayNumber(timezone),
+            mission.title
+          ).catch(err => console.error('[REMINDER] Push error:', err.message));
           console.log(`[REMINDER] User ${mission.userId?.username} - Mission: ${mission.title}`);
         }
       }

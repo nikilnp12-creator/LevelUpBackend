@@ -5,6 +5,7 @@ const {
   getUserById, getUserPosts,
   followUser, unfollowUser,
   getFollowers, getFollowing, searchUsers,
+  getWeeklyWrapUp, registerFcmToken, getIdentityScore,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
@@ -27,6 +28,11 @@ router.put('/me',       updateProfile);
 router.get('/profile',  getProfile);
 router.put('/profile',  updateProfile);
 router.post('/avatar',  avatarUpload.single('avatar'), uploadAvatar);
+
+// Weekly wrap-up & identity score (must be before /:id)
+router.get('/weekly-wrapup', getWeeklyWrapUp);
+router.get('/me/identity-score', getIdentityScore);
+router.put('/fcm-token', registerFcmToken);
 
 // Search (must come before /:id)
 router.get('/search', searchUsers);

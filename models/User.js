@@ -63,6 +63,15 @@ const userSchema = new mongoose.Schema(
       lastEarnedWeek: { type: String, default: null }, // ISO week string 'YYYY-WW'
     },
 
+    // ── Weekly Stats (populated by cron) ──────────────────────────────────────
+    weeklyStats: {
+      completedDays: { type: Number, default: 0 },
+      missedDays: { type: Number, default: 0 },
+      bestStreak: { type: Number, default: 0 },
+      xpEarned: { type: Number, default: 0 },
+      generatedAt: { type: Date, default: null },
+    },
+
     // ── Onboarding ────────────────────────────────────────────────────────────
     onboardingCompleted: { type: Boolean, default: false },
     onboardingData: {

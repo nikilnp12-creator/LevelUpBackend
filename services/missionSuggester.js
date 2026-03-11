@@ -23,7 +23,12 @@ const STATIC_SUGGESTIONS = [
 ];
 
 async function getSuggestedMissions(user, pastMissions) {
-  const groq = getGroq();
+  let groq;
+  try {
+    groq = getGroq();
+  } catch (initErr) {
+    console.error('Groq SDK init error:', initErr.message);
+  }
   if (!groq) return STATIC_SUGGESTIONS;
 
   try {
@@ -66,7 +71,12 @@ Return ONLY a JSON array, no markdown, no preamble:
 }
 
 async function generateMissionFromText(rawText, user) {
-  const groq = getGroq();
+  let groq;
+  try {
+    groq = getGroq();
+  } catch (initErr) {
+    console.error('Groq SDK init error:', initErr.message);
+  }
   if (!groq) {
     return {
       title: 'My 30-Day Mission',

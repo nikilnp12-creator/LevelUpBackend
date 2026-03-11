@@ -253,7 +253,7 @@ missionSchema.methods.grantWeeklyShieldIfDue = function () {
   const msSince = now - last;
   const daysSince = msSince / (1000 * 60 * 60 * 24);
   if (daysSince >= 7) {
-    this.shields.available = Math.min(this.shields.available + 1, 3); // cap at 3
+    this.shields.available = Math.min(this.shields.available + 1, 5); // cap at 5
     this.shields.lastGranted = now;
     return true;
   }

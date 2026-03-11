@@ -294,7 +294,58 @@ const getJoinRequests = async (req, res) => {
   }
 };
 
+// ─── @GET /api/squads/match ────────────────────────────────────────────────────
+// Auto-match squads based on user's identity/goal tags
+const autoMatchSquad = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const identity = (user.onboardingData?.identity || '').toLowerCase();
+    const goal = (user.onboardingData?.goalDescription || '').toLowerCase();
+
+    // Build search tags from user's identity and goal
+    const userTags = [];
+    if (identity) userTags.push(...identity.split(/[\s,]+/).filter(Boolean));
+    if (goal) userTags.push(...goal.split(/[\s,]+/).filter(Boolean));
+
+    let squads = [];
+
+    if (userTags.length > 0) {
+      // Find squads with matching tags that user isn't already in
+      squads = await Squad.find({
+        isActive: true,
+        isPublic: true,
+        tags: { $in: userTags },
+        'members.userId': { $ne: req.user._id },
+        $expr: { $lt: [{ $size: '$members' }, '$maxMembers'] },
+      })
+        .populate('members.userId', 'username profileImageUrl totalStreak level')
+        .sort({ updatedAt: -1 })
+        .limit(5);
+    }
+
+    // Fallback: if no tag matches, find popular public squads with open spots
+    if (squads.length === 0) {
+      squads = await Squad.find({
+        isActive: true,
+        isPublic: true,
+        'members.userId': { $ne: req.user._id },
+        $expr: { $lt: [{ $size: '$members' }, '$maxMembers'] },
+      })
+        .populate('members.userId', 'username profileImageUrl totalStreak level')
+        .sort({ updatedAt: -1 })
+        .limit(5);
+    }
+
+    const enriched = await Promise.all(squads.map(enrichSquad));
+    res.json({ success: true, squads: enriched, matchedTags: userTags });
+  } catch (err) {
+    console.error('Auto-match error:', err);
+    res.status(500).json({ success: false, message: 'Could not find matching squads.' });
+  }
+};
+
 module.exports = {
   getMySquads, searchSquads, createSquad, joinSquad, requestJoin,
   getSquad, getInviteCode, leaveSquad, getJoinRequests, acceptRequest, rejectRequest,
+  autoMatchSquad,
 };

@@ -152,6 +152,11 @@ const startMission = async (req, res) => {
     mission.isActive = true;
     mission.timezone = tz;
     mission.shields.lastGranted = now;
+
+    // Premium-aware initial shields: 2 free, 5 premium
+    const user = await User.findById(req.user._id);
+    mission.shields.available = user.isPremium ? 5 : 2;
+
     await mission.save();
 
     res.json({ success: true, message: 'Mission started! Rules are now locked.', mission });
@@ -213,8 +218,15 @@ const declareRestDay = async (req, res) => {
     if (!mission) return res.status(404).json({ success: false, message: 'Mission not found.' });
     if (!mission.isLocked || mission.status !== 'active')
       return res.status(400).json({ success: false, message: 'Mission must be active.' });
-    if ((mission.restDays || []).length >= 2)
-      return res.status(400).json({ success: false, message: 'Maximum 2 rest days per mission.' });
+
+    // Premium-aware monthly rest-day limit: 2/month free, 4/month premium
+    const user = await User.findById(req.user._id);
+    const maxRestDaysPerMonth = user.isPremium ? 4 : 2;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const restDaysThisMonth = (mission.restDays || []).filter(d => d >= monthStart).length;
+    if (restDaysThisMonth >= maxRestDaysPerMonth)
+      return res.status(400).json({ success: false, message: `Maximum ${maxRestDaysPerMonth} rest days per month${user.isPremium ? '' : '. Upgrade to Premium for 4/month'}.` });
 
     const tz = req.body.timezone || req.headers['x-timezone'] || mission.timezone || 'UTC';
     const today = mission.todayString(tz);
@@ -345,13 +357,104 @@ const getMissionSuggestions = async (req, res) => {
 // ── AI Generate Mission from free text ───────────────────────────────────────
 const generateMissionFromText = async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, durationDays } = req.body;
     if (!text) return res.status(400).json({ success: false, message: 'text is required' });
     const { generateMissionFromText: gen } = require('../services/missionSuggester');
-    const mission = await gen(text, req.user);
+    const mission = await gen(text, req.user, durationDays);
     res.json({ success: true, mission });
   } catch (err) {
+    console.error('Generate mission error:', err);
     res.status(500).json({ success: false, message: 'Could not generate mission.' });
+  }
+};
+
+// ── GET /api/missions/:id/streak-card ─────────────────────────────────────────
+const getStreakCard = async (req, res) => {
+  try {
+    const mission = await Mission.findOne({ _id: req.params.id, isDeleted: false })
+      .populate('userId', 'username profileImageUrl level totalStreak');
+    if (!mission) return res.status(404).json({ success: false, message: 'Mission not found.' });
+
+    const user = mission.userId;
+    const identityTitle = mission.getIdentityTitle();
+    const tz = mission.timezone || 'UTC';
+    const dayNumber = mission.computeDayNumber(tz);
+
+    const streakCard = {
+      missionTitle: mission.title,
+      missionEmoji: mission.emoji,
+      category: mission.category,
+      currentStreak: mission.analytics.currentStreak,
+      bestStreak: mission.analytics.bestStreak,
+      completedDays: mission.analytics.completedDays,
+      totalDays: mission.durationDays,
+      dayNumber,
+      identityScore: mission.analytics.identityScore,
+      identityTitle,
+      username: user?.username || '',
+      profileImageUrl: user?.profileImageUrl || null,
+      level: user?.level || 1,
+      milestones: mission.milestones.filter(m => m.achieved).map(m => ({ day: m.day, label: m.label })),
+    };
+
+    res.json({ success: true, streakCard });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Could not generate streak card.' });
+  }
+};
+
+// ── POST /api/missions/:id/restart ────────────────────────────────────────────
+// Comeback mechanic: restart a failed mission with bonus shields
+const restartMission = async (req, res) => {
+  try {
+    const mission = await Mission.findOne({ _id: req.params.id, userId: req.user._id, isDeleted: false });
+    if (!mission) return res.status(404).json({ success: false, message: 'Mission not found.' });
+    if (mission.status !== 'failed')
+      return res.status(400).json({ success: false, message: 'Only failed missions can be restarted.' });
+
+    const user = await User.findById(req.user._id);
+
+    // Reset mission state
+    const now = new Date();
+    mission.status = 'active';
+    mission.isActive = true;
+    mission.isLocked = true;
+    mission.startedAt = now;
+    mission.startDate = now;
+    mission.endDate = null;
+    mission.completedDays = [];
+    mission.restDays = [];
+    mission.analytics = {
+      completedDays: 0,
+      missedDays: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      identityScore: 0,
+      lastProofDay: 0,
+    };
+    mission.currentDay = 0;
+    mission.streakCount = 0;
+    mission.lastCheckIn = null;
+
+    // Bonus shields on comeback: +2 extra shields
+    const baseShields = user.isPremium ? 5 : 2;
+    mission.shields = {
+      available: baseShields + 2,
+      used: 0,
+      lastGranted: now,
+      usedOnDays: [],
+    };
+
+    // Reset milestones
+    mission.milestones.forEach(m => { m.achieved = false; m.achievedAt = null; });
+
+    await mission.save();
+    await user.addXP(25); // small XP reward for coming back
+
+    res.json({ success: true, message: '🔥 Mission restarted with comeback bonus shields!', mission });
+  } catch (err) {
+    console.error('Restart mission error:', err);
+    res.status(500).json({ success: false, message: 'Could not restart mission.' });
   }
 };
 
@@ -361,4 +464,5 @@ module.exports = {
   getPublicFeed, getLeaderboard, checkIn, deleteMission,
   useShield, declareRestDay, getTemplates,
   getMissionSuggestions, generateMissionFromText,
+  getStreakCard, restartMission,
 };

@@ -18,6 +18,59 @@ const uploadToCloudinary = (buffer, options) =>
     streamifier.createReadStream(buffer).pipe(stream);
   });
 
+// ── Gemini AI Proof Verification ──────────────────────────────────────────────
+async function verifyProofWithGemini(imageUrl, missionTitle, missionCategory) {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) return { verified: true, confidence: 0, reason: 'AI verification not configured' };
+
+  try {
+    const fetch = require('node-fetch');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+    const prompt = `You are a proof verification AI for a habit-tracking app called "Level".
+A user is on a mission titled "${missionTitle}" (category: ${missionCategory}).
+They uploaded this image as daily proof. Analyze the image and determine:
+1. Does the image appear to be genuine proof related to the mission goal?
+2. Is it a real photo (not a screenshot of someone else's content, not AI-generated, not a stock image)?
+3. Confidence score from 0 to 100.
+
+Respond in JSON only: {"verified": true/false, "confidence": 0-100, "reason": "brief explanation"}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: 'image/jpeg', data: await fetchImageAsBase64(imageUrl) } }
+          ]
+        }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
+      })
+    });
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return { verified: true, confidence: 50, reason: 'Could not parse AI response' };
+  } catch (err) {
+    console.error('Gemini verification error:', err.message);
+    return { verified: true, confidence: 0, reason: 'AI verification unavailable' };
+  }
+}
+
+async function fetchImageAsBase64(url) {
+  const fetch = require('node-fetch');
+  const response = await fetch(url);
+  const buffer = await response.buffer();
+  return buffer.toString('base64');
+}
+
 // ── POST /api/missions/:id/proof ──────────────────────────────────────────────
 const uploadProof = async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded.' });
@@ -60,6 +113,14 @@ const uploadProof = async (req, res) => {
       width: 300, height: 300, crop: 'fill', quality: 80, format: 'jpg',
     });
 
+    // ── AI Verification with Gemini ───────────────────────────────────────────
+    let aiVerification = { verified: true, confidence: 0, reason: 'Skipped' };
+    if (req.file.mimetype.startsWith('image/')) {
+      aiVerification = await verifyProofWithGemini(
+        uploadResult.secure_url, mission.title, mission.category
+      );
+    }
+
     // Save proof
     const proof = await Proof.create({
       missionId: mission._id,
@@ -70,6 +131,7 @@ const uploadProof = async (req, res) => {
       cloudinaryPublicId: uploadResult.public_id,
       caption: req.body.caption || '',
       meta: { size: req.file.size, width: uploadResult.width || 0, height: uploadResult.height || 0 },
+      aiVerification,
     });
 
     // Record proof using single consolidated method
@@ -81,7 +143,7 @@ const uploadProof = async (req, res) => {
 
     // Milestone XP bonus
     let milestoneXpBonus = 0;
-    for (const m of milestones) milestoneXpBonus += m.xp || 0;
+    for (const m of milestones) milestoneXpBonus += m.xpBonus || 0;
 
     await user.addXP(xpGain + milestoneXpBonus);
 
@@ -107,6 +169,7 @@ const uploadProof = async (req, res) => {
       xpGained: xpGain + milestoneXpBonus,
       dayNumber: requestedDay,
       milestones,
+      aiVerification,
       message: mission.status === 'completed'
         ? '🏆 Mission Complete!'
         : `Day ${requestedDay} proof uploaded! Streak: ${mission.analytics.currentStreak} 🔥`,

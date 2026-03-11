@@ -86,7 +86,7 @@ const joinChallenge = async (req, res) => {
 
     // Award badge for joining first squad-level challenge
     const user = await User.findById(req.user._id);
-    await user.awardBadge('social');
+    await user.awardBadge('social_starter');
 
     res.json({ success: true, message: 'Joined challenge!', challenge });
   } catch (err) {

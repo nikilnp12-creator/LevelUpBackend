@@ -34,6 +34,7 @@ const squadSchema = new mongoose.Schema(
     maxMembers: { type: Number, default: 20 },
     isPublic: { type: Boolean, default: true },  // public = discoverable/searchable
     isActive: { type: Boolean, default: true },
+    tags: [{ type: String, trim: true, lowercase: true }],  // goal/identity tags for auto-matching
   },
   { timestamps: true }
 );

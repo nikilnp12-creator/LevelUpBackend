@@ -47,7 +47,7 @@ const getSeasonLeaderboard = async (req, res) => {
     const userIds = season.participants.map(p => p.userId?._id || p.userId);
     const missionStats = await Mission.aggregate([
       { $match: { userId: { $in: userIds }, status: { $in: ['active', 'completed', 'at_risk'] } } },
-      { $group: { _id: '$userId', totalCheckins: { $sum: '$analytics.totalCheckIns' }, bestStreak: { $max: '$analytics.bestStreak' }, xp: { $sum: '$analytics.totalXpEarned' } } },
+      { $group: { _id: '$userId', totalCheckins: { $sum: '$analytics.completedDays' }, bestStreak: { $max: '$analytics.bestStreak' }, xp: { $sum: '$analytics.identityScore' } } },
     ]);
     const statsMap = {};
     missionStats.forEach(s => { statsMap[s._id.toString()] = s; });

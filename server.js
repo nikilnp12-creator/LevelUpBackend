@@ -12,9 +12,9 @@ const connectDB = require('./config/db');
 dotenv.config();
 connectDB();
 
-// Start cron jobs
-const { startCronJobs } = require('./jobs/missedDaysCron');
-startCronJobs();
+// Start cron jobs (daily missed-day check + weekly wrap-up + hourly reminders)
+const { initAllCronJobs } = require('./utils/cronJobs');
+initAllCronJobs();
 
 // Seed templates
 require('./jobs/seedTemplates')().catch(console.error);

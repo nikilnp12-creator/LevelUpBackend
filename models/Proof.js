@@ -38,6 +38,11 @@ const proofSchema = new mongoose.Schema(
       reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       reviewedAt: { type: Date, default: null },
     },
+    aiVerification: {
+      verified: { type: Boolean, default: true },
+      confidence: { type: Number, default: 0 },
+      reason: { type: String, default: '' },
+    },
     isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }

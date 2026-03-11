@@ -3,6 +3,7 @@ const { protect } = require('../middleware/auth');
 const {
   getMySquads, searchSquads, createSquad, joinSquad, requestJoin,
   getSquad, getInviteCode, leaveSquad, getJoinRequests, acceptRequest, rejectRequest,
+  autoMatchSquad,
 } = require('../controllers/squadController');
 const { getSquadFeedById } = require('../controllers/postController');
 
@@ -11,6 +12,7 @@ router.use(protect);
 
 router.get('/my',     getMySquads);
 router.get('/search', searchSquads);
+router.get('/match',  autoMatchSquad);
 router.post('/',      createSquad);
 router.post('/join',  joinSquad);
 

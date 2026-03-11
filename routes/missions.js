@@ -8,6 +8,7 @@ const {
   getPublicFeed, getLeaderboard, checkIn, deleteMission,
   useShield, declareRestDay, getTemplates,
   getMissionSuggestions, generateMissionFromText,
+  getStreakCard, restartMission,
 } = require('../controllers/missionController');
 const { uploadProof, reactToProof, addComment, getComments } = require('../controllers/proofController');
 
@@ -34,6 +35,8 @@ router.use(protect);
 router.get('/feed/public', getPublicFeed);
 router.get('/leaderboard', getLeaderboard);
 router.get('/templates', getTemplates);
+router.get('/suggestions', getMissionSuggestions);
+router.post('/generate', generateMissionFromText);
 
 router.get('/', getMyMissions);
 router.post('/', createMission);
@@ -45,6 +48,8 @@ router.post('/:id/complete', completeMission);
 router.post('/:id/checkin', checkIn);
 router.post('/:id/use-shield', useShield);
 router.post('/:id/rest-day', declareRestDay);
+router.post('/:id/restart', restartMission);
+router.get('/:id/streak-card', getStreakCard);
 router.post('/:id/proof', proofRateLimit, upload.single('file'), uploadProof);
 router.get('/:id/proofs', getMissionProofs);
 router.post('/:id/flag', flagProof);
@@ -53,8 +58,5 @@ router.post('/:id/flag', flagProof);
 router.post('/proofs/:proofId/react', reactToProof);
 router.get('/proofs/:proofId/comments', getComments);
 router.post('/proofs/:proofId/comments', addComment);
-
-router.get('/suggestions', getMissionSuggestions);
-router.post('/generate', generateMissionFromText);
 
 module.exports = router;
