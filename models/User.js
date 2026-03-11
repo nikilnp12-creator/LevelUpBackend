@@ -80,6 +80,17 @@ const userSchema = new mongoose.Schema(
       visibility: { type: String, default: 'public' },
     },
 
+    // ── Engagement profile for "For You" algorithmic feed ─────────────────────
+    engagementProfile: {
+      // How many times the user interacted with each mood  { "motivated": 5, "proud": 3, ... }
+      moodPreferences:     { type: Map, of: Number, default: {} },
+      // Category interaction counts  { "Get Fit": 10, "Study Discipline": 4, ... }
+      categoryPreferences: { type: Map, of: Number, default: {} },
+      // Users most interacted with   { "<userId>": 8, ... }
+      userInteractions:    { type: Map, of: Number, default: {} },
+      lastUpdated:         { type: Date, default: null },
+    },
+
     isActive: { type: Boolean, default: true },
     isAdmin: { type: Boolean, default: false },
   },
@@ -142,6 +153,41 @@ userSchema.methods.awardBadge = async function (badgeId, name, emoji, descriptio
   });
   await this.save();
   return true;
+};
+
+/**
+ * Record an engagement signal for the "For You" feed algorithm.
+ * Call this whenever the user likes, comments, or reacts to a post.
+ * @param {object} post – the Post document (with mood, missionId populated)
+ */
+userSchema.methods.recordEngagement = async function (post) {
+  if (!this.engagementProfile) {
+    this.engagementProfile = { moodPreferences: {}, categoryPreferences: {}, userInteractions: {} };
+  }
+  const ep = this.engagementProfile;
+
+  // Track mood preference
+  if (post.mood) {
+    const cur = ep.moodPreferences.get(post.mood) || 0;
+    ep.moodPreferences.set(post.mood, cur + 1);
+  }
+
+  // Track category preference (from populated mission or raw missionId)
+  const missionTitle = post.missionId?.title || post._missionTitle;
+  if (missionTitle) {
+    const cur = ep.categoryPreferences.get(missionTitle) || 0;
+    ep.categoryPreferences.set(missionTitle, cur + 1);
+  }
+
+  // Track user interaction (who they engage with)
+  const postAuthor = (post.userId?._id || post.userId)?.toString();
+  if (postAuthor && postAuthor !== this._id.toString()) {
+    const cur = ep.userInteractions.get(postAuthor) || 0;
+    ep.userInteractions.set(postAuthor, cur + 1);
+  }
+
+  ep.lastUpdated = new Date();
+  await this.save();
 };
 
 userSchema.methods.toJSON = function () {

@@ -61,7 +61,7 @@ app.use('/api/seasons', require('./routes/seasons'));
 app.use('/api/invites', require('./routes/invites'));
 
 app.get('/', (req, res) =>
-  res.json({ message: '🚀 Level Up API v3.0', version: '4.0.0', features: ['missions', 'challenges', 'seasons', 'invites', 'ai-suggestions', 'streak-cards', 'comeback'] })
+  res.json({ message: '🚀 Becomr API v3.0', version: '4.0.0', features: ['missions', 'challenges', 'seasons', 'invites', 'ai-suggestions', 'streak-cards', 'comeback'] })
 );
 
 app.use((err, req, res, next) => {
@@ -77,5 +77,5 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () =>
-  console.log(`✅ Level Up API v3.0 running on port ${PORT}`)
+  console.log(`✅ Becomr API v3.0 running on port ${PORT}`)
 );

@@ -6,7 +6,7 @@ const {
   createPost, createPostWithMedia,
   toggleLike, getComments, addComment,
   toggleCommentLike, deleteComment, replyToComment, toggleReplyLike,
-  toggleReaction, getReactions, getTodayStats,
+  toggleReaction, getReactions, getTodayStats, recordEngagement,
 } = require('../controllers/postController');
 
 const router = express.Router();
@@ -30,6 +30,7 @@ router.post('/', mediaUpload.single('media'), createPostWithMedia);
 router.get('/:id/comments', getComments);
 router.post('/:id/like', toggleLike);
 router.post('/:id/react', toggleReaction);
+router.post('/:id/engage', recordEngagement);
 router.get('/:id/reactions', getReactions);
 router.post('/:id/comment', addComment);
 router.post('/:id/comments/:commentId/like', toggleCommentLike);

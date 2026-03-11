@@ -26,6 +26,17 @@ const commentSchema = new mongoose.Schema({
   createdAt:      { type: Date, default: Date.now },
 });
 
+// Mood values for AI-analyzed emotion of each post
+const MOOD_TYPES = [
+  'motivated', 'proud', 'grateful', 'excited',
+  'focused', 'struggling', 'reflective', 'peaceful',
+];
+
+const MOOD_EMOJIS = {
+  motivated: '🔥', proud: '💪', grateful: '🙏', excited: '🎉',
+  focused: '🎯', struggling: '😤', reflective: '🤔', peaceful: '🧘',
+};
+
 const postSchema = new mongoose.Schema(
   {
     userId:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -44,6 +55,11 @@ const postSchema = new mongoose.Schema(
     comments:   [commentSchema],
     // Emoji reactions — stored as array of {userId, emoji} pairs
     reactions:  [reactionSchema],
+
+    // ── AI mood/emotion analysis ──────────────────────────────────────────────
+    mood:           { type: String, enum: [...MOOD_TYPES, null], default: null, index: true },
+    moodEmoji:      { type: String, default: null },
+    moodConfidence: { type: Number, default: 0, min: 0, max: 1 },
   },
   { timestamps: true }
 );
@@ -62,3 +78,5 @@ postSchema.set('toJSON', { virtuals: true });
 
 module.exports = mongoose.model('Post', postSchema);
 module.exports.REACTION_TYPES = REACTION_TYPES;
+module.exports.MOOD_TYPES = MOOD_TYPES;
+module.exports.MOOD_EMOJIS = MOOD_EMOJIS;
